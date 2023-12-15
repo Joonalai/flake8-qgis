@@ -167,3 +167,12 @@ def test_QGS106():
         "1:0 QGS106 Use 'from osgeo import gdal' instead of 'import gdal'",
         "1:0 QGS106 Use 'from osgeo import ogr' instead of 'import ogr'",
     }
+
+def test_asd():
+    ret = _results(
+        """
+def foo():
+    QgsVectorLayer.startEditing(bar)
+        """
+
+    )

@@ -1,7 +1,6 @@
 # Core Library modules
 import ast
 import sys
-from _ast import FunctionDef, Import
 from typing import Any, List, Optional, Tuple
 
 CLASS_FACTORY = "classFactory"
@@ -25,6 +24,51 @@ QGS105 = (
     "instead import it: 'from qgis.utils import iface'"
 )
 QGS106 = "QGS106 Use 'from osgeo import {members}' instead of 'import {members}'"
+
+
+pyqgis_methods = [
+    (QgsProject.instance().addMapLayer, None),
+    (QgsProject.instance().write, bool),
+    (QgsVectorLayer.dataProvider().addFeatures, bool),
+    (QgsVectorLayer.startEditing, bool),
+    (QgsVectorLayer.commitChanges, bool),
+    (QgsVectorLayer.rollBack, bool),
+    (QgsVectorLayer.startEditing, bool),
+    (QgsVectorLayer.updateExtents, bool),
+    (QgsVectorLayer.addFeature, bool),
+    (QgsVectorLayer.addFeatures, bool),
+    (QgsVectorLayer.deleteFeature, bool),
+    (QgsVectorLayer.deleteFeatures, bool),
+    (QgsVectorLayer.beginEditCommand, bool),
+    (QgsVectorLayer.endEditCommand, bool),
+    (QgsVectorLayer.addAttribute, bool),
+    (QgsVectorLayer.updateFeature, bool),
+    (QgsVectorLayer.deleteAttribute, bool),
+    (QgsVectorLayer.addAttributeAlias, bool),
+    (QgsVectorLayer.deleteAttributeAlias, bool),
+    (QgsVectorLayer.dataProvider().changeAttributeValues, bool),
+    (QgsVectorLayer.dataProvider().changeGeometryValues, bool),
+    ("QgsVectorLayer.renameAttribute", bool),
+    ("QgsVectorLayer.setCustomProperty", bool),
+    ("QgsFeature.setAttribute", bool),
+    ("QgsGeometry.simplify", QgsGeometry()), # Empty
+    ("QgsGeometry.transform", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.translate", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addPart", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addPartGeometry", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addPoints", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addPointsXY", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addRing", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.reshapeGeometry", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.rotate", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.splitGeometry", tuple[Qgis.GeometryOperationResult, Any]), # Error or not?
+    ("QgsGeometry.addRing", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addRing", Qgis.GeometryOperationResult), # Error or not?
+    ("QgsGeometry.addRing", Qgis.GeometryOperationResult), # Error or not?
+
+
+]
+
 
 
 def _get_qgs101_and_103(
@@ -151,6 +195,39 @@ def _get_qgs106(node: ast.Import) -> List[Tuple[int, int, str]]:
             )
     return errors
 
+def _get_qgs2(node :ast.Call):
+    errors: List[Tuple[int, int, str]] = []
+    func = node.func
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        # Check if the function call is one of the specified PyQGIS methods
+        for method, expected_return in pyqgis_methods:
+            if func.attr == method.split('.')[1]:
+                pass
+                # TODO: vaikeaa voi olla katsoa se Attributen id koska se tuskin on luokan nimi...
+def check_qgs_methods_with_returns(physical_checker, node):
+    if isinstance(node, ast.Expr):
+        # Extract method call expressions
+        call_expr = node.value
+        if isinstance(call_expr, ast.Call):
+            func = call_expr.func
+            if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+                # Check if the function call is one of the specified PyQGIS methods
+                for method, expected_return in pyqgis_methods:
+                    if (
+                            func.value.id == method.split('.')[0] and
+                            func.attr == method.split('.')[1]
+                    ):
+                        return_type = expected_return
+
+                        if return_type == 'bool':
+                            # Check if the return value is checked with a comparison
+                            if not any(isinstance(expr, ast.Compare) and expr.left == node for expr in ast.walk(physical_checker.tree)):
+                                physical_checker.add_error(f"QGS001 '{method}' return value not checked with a comparison.", node)
+                        elif return_type != 'None':
+                            physical_checker.add_error(f"QGS002 '{method}' return value is expected to be of type {return_type}.", node)
+
+
+
 
 class Visitor(ast.NodeVisitor):
     def __init__(self) -> None:
@@ -161,14 +238,18 @@ class Visitor(ast.NodeVisitor):
         self.errors += _get_qgs103(node)
         self.generic_visit(node)
 
-    def visit_Import(self, node: Import) -> Any:  # noqa N802
+    def visit_Import(self, node: ast.Import) -> Any:  # noqa N802
         self.errors += _get_qgs102(node)
         self.errors += _get_qgs104(node)
         self.errors += _get_qgs106(node)
         self.generic_visit(node)
 
-    def visit_FunctionDef(self, node: FunctionDef) -> Any:  # noqa N802
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:  # noqa N802
         self.errors += _get_qgs105(node)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> Any:  # noqa N802
+        self.errors += _get_qgs2(node)
         self.generic_visit(node)
 
 
